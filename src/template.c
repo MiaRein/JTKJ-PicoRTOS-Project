@@ -14,7 +14,7 @@
 #define DEFAULT_STACK_SIZE 2048 
 
 //Add here necessary states
-enum state { IDLE=1 };
+enum state { IDLE=1, RECORDING, READY_TO_SEND };
 enum state programState = IDLE;
 
 static void example_task(void *arg){
@@ -44,10 +44,11 @@ int main() {
                 2,                  // (en) Priority of this task
                 &myExampleTask);    // (en) A handle to control the execution of this task
 
+    /* TÄMÄ TOISTAISEKSI KOMMENTISSA, KOSKA pdPASS herjaa
     if(result != pdPASS) {
         printf("Example Task creation failed\n");
         return 0;
-    }
+    }*/
 
     // Start the scheduler (never returns)
     vTaskStartScheduler();
