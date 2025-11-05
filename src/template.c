@@ -7,7 +7,7 @@
 #include <FreeRTOS.h>
 #include <queue.h>
 #include <task.h>
-//#include <pins.h>
+#include <math.h>
 
 #include "tkjhat/sdk.h"
 
@@ -26,48 +26,8 @@ char morseMessage[256];
 size_t morseIndex   = 0;
 
 //aikaperusteiseen kirjainten ja viestin hyväksyntään globaalit muuttujat
-absolute_time_t lastSymbolTime; //kuinka kauan edellisen symbolin havainnosta
-absolute_time_t lastMessageActivityTime; //kuinka kauan minkään toiminnan havainnosta
-bool letterFinalized = false; //onko kirjain valmis
-
-
-/* valmiiksi annettu esimerkki
-static void example_task(void *arg){
-    (void)arg;
-
-    for(;;){
-        tight_loop_contents(); // Modify with application code here.
-        vTaskDelay(pdMS_TO_TICKS(2000));
-    }
-}*/
-
-// lukee IMU-dataa ja tunnistaa liikkeet/asennot
-static void morse_task(void *arg) {
-    (void)arg;
-    float ax, ay, az, gx, gy, gz, temp;
-
-    
-
-    for(;;) {
-        // lukee IMUN:n sensoridatan -> palauttaa 0 jos lukeminen onnistuu
-        if (ICM42670_read_sensor_data(&ax, &ay, &az, &gx, &gy, &gz, &temp) == 0) {
-            if(programState == RECORDING)   {
-                if (fabs(az) > 0.8 && fabs(ax) < 0.3) {
-                    //jos Z-akselin kiihtyvyys on yli 0.8g (laite vaakatasossa) ja X-akseli on lähes nolla, tulkitaan pisteeksi
-                    currentSymbol = '.';
-                    add_symbol_to_message(currentSymbol);
-                    printf("Havaittu piste\n");
-                } else if (fabs(ax) > 0.8 && fabs(az) < 0.3) {
-                    //jos X-akselin kiihtyvyys on yli 0.8 g (laite pystyasennossa) ja Z-akseli on lähes nolla, tulkitaan viivaksi
-                    currentSymbol = '-';
-                    add_symbol_to_message(currentSymbol);
-                    printf("Havaittu viiva\n");
-                }
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
+bool letterFinalized;
+absolute_time_t lastSymbolTime; //edellisen symbolin havainnosta
 
 //lisätään IMU-sensorilla saatu merkki viestiin, tarkistetaan että puskuriin mahtuu
 void add_symbol_to_message(char symbol) {
@@ -78,6 +38,65 @@ void add_symbol_to_message(char symbol) {
 }
 
 
+void buttonFxn(uint gpio, uint32_t eventMask) {
+    if (gpio == BUTTON1) {
+        printf("Lähetetään viesti: %s\n", morseMessage);
+        morseIndex = 0;
+        morseMessage[0] = '\0';
+        letterFinalized = false;
+    }
+}
+
+
+// lukee IMU-dataa ja tunnistaa liikkeet/asennot
+static void morse_task(void *arg) {
+    (void)arg;
+    float ax, ay, az, gx, gy, gz, temp;
+
+    absolute_time_t symbolStartTime; //kuinka kauan symbolin havainnosta
+    bool symbolDetected = false; //onko symbooli havaittu
+
+    for(;;) {
+        // lukee IMUN:n sensoridatan -> palauttaa 0 jos lukeminen onnistuu
+        if (ICM42670_read_sensor_data(&ax, &ay, &az, &gx, &gy, &gz, &temp) == 0) {
+            if(programState == RECORDING)   {
+               if (!symbolDetected) {
+                    if (fabs(az) > 0.8 && fabs(ax) < 0.3 && fabs(ay) < 0.3) {
+                        //laite vaakatasossa
+                        currentSymbol = '.';
+                        symbolStartTime = get_absolute_time();
+                        symbolDetected = true;
+                    } else if (fabs(ax) > 0.8 && fabs(az) < 0.3 && fabs(ay) < 0.3) {
+                        //laite pystyasennossa
+                        currentSymbol = '-';
+                        symbolStartTime = get_absolute_time();
+                        symbolDetected = true;
+                    } else if ((fabs(ay) > 0.8 || fabs(ay) < -0.8) && fabs(ax) < 0.3 && fabs(az) < 0.3) {
+                        //kallistuu ylöspäin
+                        currentSymbol = ' ';
+                        symbolStartTime = get_absolute_time();
+                        symbolDetected = true;
+                    }
+                } else {  
+                    //symboli hyväksytään, jos asento pysyy 500ms
+                    if (absolute_time_diff_us(symbolStartTime, get_absolute_time()) > 500000) {
+                        add_symbol_to_message(currentSymbol);
+                        printf("Hyväksytty symboli: %c\n", currentSymbol);
+                        symbolDetected = false;
+                        lastSymbolTime = get_absolute_time();
+                        letterFinalized = false;
+                    }                    
+                }
+                if (absolute_time_diff_us(lastSymbolTime, get_absolute_time()) > 1500000 && !letterFinalized && morseIndex > 0) {
+                    printf("Kirjain valmis\n");
+                    letterFinalized = true;
+                }
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
 // lähettää tunnistetut symbolit UART:n kautta
 static void uart_task(void *arg) {
     (void)arg;
@@ -87,6 +106,33 @@ static void uart_task(void *arg) {
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
+
+//testataakseen asentoja
+/*
+static void imu_test_task(void *arg) {
+    (void)arg;
+    float ax, ay, az, gx, gy, gz, temp;
+
+    for (;;) {
+        if (ICM42670_read_sensor_data(&ax, &ay, &az, &gx, &gy, &gz, &temp) == 0) {
+            printf("ax: %.2f, ay: %.2f, az: %.2f\n", ax, ay, az);
+
+            if (fabs(az) > 0.85 && fabs(ax) < 0.3 && fabs(ay) < 0.3) {
+                printf("Asento: Vaakatasossa (piste)\n");
+            } else if (fabs(ax) > 0.85 && fabs(ay) < 0.3 && fabs(az) < 0.3) {
+                printf("Asento: Pystyasennossa (viiva)\n");
+            } else if (fabs(ay) > 0.85 && fabs(ax) < 0.3 && fabs(az) < 0.3) {
+                printf("Asento: Kallistettu eteenpäin (välilyönti)\n");
+            } else if (fabs(ay) < -0.85 && fabs(ax) < 0.3 && fabs(az) < 0.3) {
+                printf("Asento: Kallistettu taaksepäin (välilyönti)\n");
+            } else {
+                printf("Asento: Ei tunnistettu\n");
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+*/
 
 int main() {
     stdio_init_all();
@@ -114,6 +160,15 @@ int main() {
 
     gpio_init(RGB_LED_R);
     gpio_set_dir(RGB_LED_R, GPIO_OUT);
+
+    //painikkeiden alustaminen
+    gpio_init(BUTTON1);
+    gpio_set_dir(BUTTON1, GPIO_IN);
+
+    gpio_set_irq_enabled_with_callback(BUTTON1, GPIO_IRQ_EDGE_FALL, true, &buttonFxn);
+
+    //asennon testauksiin
+    //xTaskCreate(imu_test_task, "IMU Test", DEFAULT_STACK_SIZE, NULL, 1, NULL);
 
     TaskHandle_t morseTaskHandle = NULL;
     // Create the tasks with xTaskCreate
