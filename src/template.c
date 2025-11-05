@@ -27,11 +27,12 @@ bool letterFinalized = false; //onko kirjain valmis
 bool readyForNextSymbol = true; // mahdollistaa useamman saman symbolin lukemisen liikuttamatta laitetta
 absolute_time_t lastSymbolAcceptedTime; //edellisen symbolin havainno
 
-static void uart_task(void *arg);
 static void morse_task(void *arg);
 void add_symbol_to_message(char symbol);
 void buttonFxn(uint gpio, uint32_t eventMask);
 void send_morse_message(const char* message);
+void change_state(enum state newState);
+void display_message(const char* message);
 
 int main() {
     stdio_init_all();
@@ -46,16 +47,22 @@ int main() {
      //IMU:n alustaminen
     init_i2c_default();
     if (init_ICM42670() != 0) {
+        gpio_put(RGB_LED_R, 1); //punainen led palaa virheestä
+        sleep_ms(1000);
+        gpio_put(RGB_LED_R, 0);
         printf("IMU init failed\n");
     }
     ICM42670_start_with_default_values();
 
     //LEDin eri värien alustaminen
-    gpio_init(RGB_LED_B);
+    gpio_init(RGB_LED_B); //sininen
     gpio_set_dir(RGB_LED_B, GPIO_OUT);
 
-    gpio_init(RGB_LED_G);
+    gpio_init(RGB_LED_G); //vihreä
     gpio_set_dir(RGB_LED_G, GPIO_OUT);
+
+    gpio_init(RGB_LED_R); //punainen
+    gpio_set_dir(RGB_LED_R, GPIO_OUT);
 
     //painikkeiden alustaminen
     gpio_init(BUTTON1);
@@ -67,6 +74,9 @@ int main() {
     gpio_init(BUZZER_PIN);
     gpio_set_dir(BUZZER_PIN, GPIO_OUT);
     gpio_put(BUZZER_PIN, 0); //aluksi pois päältä
+
+    //näytön alustus
+    init_display();
 
     TaskHandle_t morseTaskHandle = NULL;
     // Create the tasks with xTaskCreate
@@ -100,18 +110,15 @@ void add_symbol_to_message(char symbol) {
     }
 }
 
-
 void buttonFxn(uint gpio, uint32_t eventMask) {
     if (gpio == BUTTON1) {
         switch (programState) {
             case IDLE:
-                programState = RECORDING;
-                printf("Tila: RECORDING\n");
+                change_state(RECORDING);
                 break;
 
             case RECORDING:
-                programState = READY_TO_SEND;
-                printf("Tila: READY_TO_SEND\n");
+                change_state(READY_TO_SEND);
                 break;
 
             case READY_TO_SEND:
@@ -132,8 +139,7 @@ void buttonFxn(uint gpio, uint32_t eventMask) {
                 morseIndex = 0;
                 morseMessage[0] = '\0';
                 letterFinalized = false;
-                programState = IDLE;
-                printf("Tila: IDLE\n");
+                change_state(IDLE);
                 break;
         }
     }
@@ -197,25 +203,35 @@ static void morse_task(void *arg) {
     }
 }
 
-//jos haluat lähettää kokon viestin kerralla, käytä tätä
+//Viestin lähetys kerralla
 void send_morse_message(const char* message) {
     if (message == NULL || message[0] == '\0') {
         printf("Viestissä ei ole sisältöä");
         return;
     }
- 
+    display_message(message);
+    
     uart_puts(uart0, message);
     uart_putc_raw(uart0, '\n'); //rivinvaihto loppuun
 }
 
-// lähettää tunnistetut symbolit UART:n kautta
-static void uart_task(void *arg) {
-    (void)arg;
-
-    for(;;) {
-        tight_loop_contents(); // Modify with application code here.
-        vTaskDelay(pdMS_TO_TICKS(2000));
+void change_state(enum state newState) {
+    programState = newState;
+    const char* stateText = "";
+    switch (newState) {
+        case IDLE: stateText = "Tila: IDLE"; break;
+        case RECORDING: stateText = "Tila: RECORDING"; break;
+        case READY_TO_SEND: stateText = "Tila: READY_TO_SEND"; break;
     }
+    printf("s\n", stateText);
+    display_message(stateText);
 }
 
-
+void display_message(const char* message) {
+    clear_display(); //tyhjentää näytön ennen uutta viestiä
+    set_text_cursor(0, 0); //asettaa tekstin aloituskohdan vasempaan yläkulmaan
+    //jos viesti on pitkä, harkitse rivinvaihtoa
+    //write_text_xy(0, 0, "Viesti:");
+    //write_text_xy(0, 10, message); // toinen rivi
+    write_text(message); //kirjoittaa viestin näytölle
+}
