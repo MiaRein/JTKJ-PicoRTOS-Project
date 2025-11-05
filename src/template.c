@@ -25,6 +25,12 @@ char currentSymbol;
 char morseMessage[256]; 
 size_t morseIndex   = 0;
 
+//aikaperusteiseen kirjainten ja viestin hyväksyntään globaalit muuttujat
+absolute_time_t lastSymbolTime; //kuinka kauan edellisen symbolin havainnosta
+absolute_time_t lastMessageActivityTime; //kuinka kauan minkään toiminnan havainnosta
+bool letterFinalized = false; //onko kirjain valmis
+
+
 /* valmiiksi annettu esimerkki
 static void example_task(void *arg){
     (void)arg;
@@ -39,6 +45,8 @@ static void example_task(void *arg){
 static void morse_task(void *arg) {
     (void)arg;
     float ax, ay, az, gx, gy, gz, temp;
+
+    
 
     for(;;) {
         // lukee IMUN:n sensoridatan -> palauttaa 0 jos lukeminen onnistuu
@@ -97,14 +105,27 @@ int main() {
     }
     ICM42670_start_with_default_values();
 
-    TaskHandle_t myExampleTask = NULL;
+    //LEDin eri värien alustaminen
+    gpio_init(RGB_LED_B);
+    gpio_set_dir(RGB_LED_B, GPIO_OUT);
+
+    gpio_init(RGB_LED_G);
+    gpio_set_dir(RGB_LED_G, GPIO_OUT);
+
+    gpio_init(RGB_LED_R);
+    gpio_set_dir(RGB_LED_R, GPIO_OUT);
+
+    TaskHandle_t morseTaskHandle = NULL;
     // Create the tasks with xTaskCreate
-    BaseType_t result = xTaskCreate(morse_task,       // (en) Task function
+    BaseType_t morse = xTaskCreate(morse_task,       // (en) Task function
                 "morse",              // (en) Name of the task 
                 DEFAULT_STACK_SIZE, // (en) Size of the stack for this task (in words). Generally 1024 or 2048
                 NULL,               // (en) Arguments of the task 
                 2,                  // (en) Priority of this task
-                &myExampleTask);    // (en) A handle to control the execution of this task
+                &morseTaskHandle);    // (en) A handle to control the execution of this task
+
+    TaskHandle_t uartTaskHandle = NULL;
+    BaseType_t uart = xTaskCreate(uart_task, "uart", DEFAULT_STACK_SIZE, NULL, 2, &uartTaskHandle);
 
     /* TÄMÄ KOMMENTEISSA KUN pdPASS herjaa ettei ole alustettu?
     if(result != pdPASS) {
