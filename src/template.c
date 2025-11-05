@@ -23,14 +23,83 @@ char currentSymbol;
 
 //Morse-viestin puskuri
 char morseMessage[256]; 
-size_t morseIndex   = 0;
+size_t morseIndex = 0;
 
 //aikaperusteiseen kirjainten ja viestin hyväksyntään globaalit muuttujat
 absolute_time_t symbolStartTime; //kuinka kauan symbolin havainnosta
 bool symbolDetected = false; //onko symbooli havaittu
 bool letterFinalized = false; //onko kirjain valmis
 bool readyForNextSymbol = true; // mahdollistaa useamman saman symbolin lukemisen liikuttamatta laitetta
-absolute_time_t lastSymbolAcceptedTime; //edellisen symbolin havainnosta
+absolute_time_t lastSymbolAcceptedTime; //edellisen symbolin havainno
+
+static void uart_task(void *arg);
+static void morse_task(void *arg);
+void add_symbol_to_message(char symbol);
+void buttonFxn(uint gpio, uint32_t eventMask);
+
+int main() {
+    stdio_init_all();
+    //Uncomment this lines if you want to wait till the serial monitor is connected
+    while (!stdio_usb_connected()){
+        sleep_ms(10);
+    }
+
+    init_hat_sdk();
+    sleep_ms(300); //Wait some time so initialization of USB and hat is done.
+
+     //IMU:n alustaminen
+    init_i2c_default();
+    if (init_ICM42670() != 0) {
+        printf("IMU init failed\n");
+    }
+    ICM42670_start_with_default_values();
+
+    //LEDin eri värien alustaminen
+    gpio_init(RGB_LED_B);
+    gpio_set_dir(RGB_LED_B, GPIO_OUT);
+
+    gpio_init(RGB_LED_G);
+    gpio_set_dir(RGB_LED_G, GPIO_OUT);
+
+    //painikkeiden alustaminen
+    gpio_init(BUTTON1);
+    gpio_set_dir(BUTTON1, GPIO_IN);
+
+    gpio_set_irq_enabled_with_callback(BUTTON1, GPIO_IRQ_EDGE_FALL, true, &buttonFxn);
+
+    //äänimerkin alustus
+    gpio_init(BUZZER_PIN);
+    gpio_set_dir(BUZZER_PIN, GPIO_OUT);
+    gpio_put(BUZZER_PIN, 0); //aluksi pois päältä
+
+    TaskHandle_t morseTaskHandle = NULL;
+    // Create the tasks with xTaskCreate
+    BaseType_t morse = xTaskCreate(morse_task,       // (en) Task function
+                "morse",              // (en) Name of the task 
+                DEFAULT_STACK_SIZE, // (en) Size of the stack for this task (in words). Generally 1024 or 2048
+                NULL,               // (en) Arguments of the task 
+                2,                  // (en) Priority of this task
+                &morseTaskHandle);    // (en) A handle to control the execution of this task
+
+    if (morse != pdPASS) {
+        printf("Morse Task creation failed\n");
+        return 0;
+    }
+    
+    TaskHandle_t uartTaskHandle = NULL;
+    BaseType_t uart = xTaskCreate(uart_task, "uart", DEFAULT_STACK_SIZE, NULL, 2, &uartTaskHandle);
+
+    if (uart != pdPASS) {
+        printf("Uart Task creation failed\n");
+        return 0;
+    }
+    
+    // Start the scheduler (never returns)
+    vTaskStartScheduler();
+
+    // Never reach this line.
+    return 0;
+}
 
 //lisätään IMU-sensorilla saatu merkki viestiin, tarkistetaan että puskuriin mahtuu
 void add_symbol_to_message(char symbol) {
@@ -77,8 +146,7 @@ void buttonFxn(uint gpio, uint32_t eventMask) {
                 programState = IDLE;
                 printf("Tila: IDLE\n");
                 break;
-            }
-        
+        }
     }
 }
 
@@ -151,68 +219,3 @@ static void uart_task(void *arg) {
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
-
-int main() {
-    stdio_init_all();
-    //Uncomment this lines if you want to wait till the serial monitor is connected
-    while (!stdio_usb_connected()){
-        sleep_ms(10);
-    }
-
-    init_hat_sdk();
-    sleep_ms(300); //Wait some time so initialization of USB and hat is done.
-
-     //IMU:n alustaminen
-    init_i2c_default();
-    if (init_ICM42670() != 0) {
-        printf("IMU init failed\n");
-    }
-    ICM42670_start_with_default_values();
-
-    //LEDin eri värien alustaminen
-    gpio_init(RGB_LED_B);
-    gpio_set_dir(RGB_LED_B, GPIO_OUT);
-
-    gpio_init(RGB_LED_G);
-    gpio_set_dir(RGB_LED_G, GPIO_OUT);
-
-    //painikkeiden alustaminen
-    gpio_init(BUTTON1);
-    gpio_set_dir(BUTTON1, GPIO_IN);
-
-    gpio_set_irq_enabled_with_callback(BUTTON1, GPIO_IRQ_EDGE_FALL, true, &buttonFxn);
-
-    //äänimerkin alustus
-    gpio_init(BUZZER_PIN);
-    gpio_set_dir(BUZZER_PIN, GPIO_OUT);
-    gpio_put(BUZZER_PIN, 0); //aluksi pois päältä
-
-    TaskHandle_t morseTaskHandle = NULL;
-    // Create the tasks with xTaskCreate
-    BaseType_t morse = xTaskCreate(morse_task,       // (en) Task function
-                "morse",              // (en) Name of the task 
-                DEFAULT_STACK_SIZE, // (en) Size of the stack for this task (in words). Generally 1024 or 2048
-                NULL,               // (en) Arguments of the task 
-                2,                  // (en) Priority of this task
-                &morseTaskHandle);    // (en) A handle to control the execution of this task
-
-    if (morse != pdPASS) {
-        printf("Morse Task creation failed\n");
-        return 0;
-    }
-    
-    TaskHandle_t uartTaskHandle = NULL;
-    BaseType_t uart = xTaskCreate(uart_task, "uart", DEFAULT_STACK_SIZE, NULL, 2, &uartTaskHandle);
-
-    if (uart != pdPASS) {
-        printf("Uart Task creation failed\n");
-        return 0;
-    }
-    
-    // Start the scheduler (never returns)
-    vTaskStartScheduler();
-
-    // Never reach this line.
-    return 0;
-}
-
