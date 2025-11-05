@@ -1,26 +1,26 @@
-
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #include <pico/stdlib.h>
-
 #include <FreeRTOS.h>
 #include <queue.h>
 #include <task.h>
-#include <math.h>
 
 #include "tkjhat/sdk.h"
 
-// Default stack size for the tasks. It can be reduced to 1024 if task is not using lot of memory.
+// Default stack size for the tasks
 #define DEFAULT_STACK_SIZE 2048 
 
 //Add here necessary states
+//Tilakone ei pakollinen Taso 1:ssä
 enum state { IDLE=1, RECORDING, READY_TO_SEND };
 enum state programState = IDLE;
 
 char currentSymbol; 
 char morseMessage[256]; 
 size_t morseIndex = 0;
+
 absolute_time_t symbolStartTime; //kuinka kauan symbolin havainnosta
 bool symbolDetected = false; //onko symbooli havaittu
 bool letterFinalized = false; //onko kirjain valmis
@@ -84,14 +84,6 @@ int main() {
 
     if (morse != pdPASS) {
         printf("Morse Task creation failed\n");
-        return 0;
-    }
-    
-    TaskHandle_t uartTaskHandle = NULL;
-    BaseType_t uart = xTaskCreate(uart_task, "uart", DEFAULT_STACK_SIZE, NULL, 2, &uartTaskHandle);
-
-    if (uart != pdPASS) {
-        printf("Uart Task creation failed\n");
         return 0;
     }
     
@@ -191,7 +183,6 @@ static void morse_task(void *arg) {
                     printf("Kirjain valmis\n");
                     letterFinalized = true;
 
-
                     // Sininen LED merkiksi valmiista kirjaimesta
                     gpio_put(RGB_LED_B, 1);
                     sleep_ms(500); 
@@ -209,6 +200,7 @@ void send_morse_message(const char* message) {
         printf("Viestissä ei ole sisältöä");
         return;
     }
+    //näyttö ei ole pakollinen taso 1ssä, poista jos haluat
     display_message(message);
     
     uart_puts(uart0, message);
@@ -227,6 +219,7 @@ void change_state(enum state newState) {
     display_message(stateText);
 }
 
+//näyttö ei ole pakollinen Taso 1:ssä
 void display_message(const char* message) {
     clear_display(); //tyhjentää näytön ennen uutta viestiä
     set_text_cursor(0, 0); //asettaa tekstin aloituskohdan vasempaan yläkulmaan
