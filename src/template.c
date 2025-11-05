@@ -215,6 +215,14 @@ static void uart_task(void *arg) {
     (void)arg;
 
     for(;;) {
+        if (programState == READY_TO_SEND) {
+            printf("Viesti valmis lähetettäväksi\n");
+            printf("Lähetetään viesti: %s\n", morseMessage);
+            send_morse_message(morseMessage);
+            morseIndex = 0;
+            morseMessage[0] = '\0';
+            programState = IDLE;
+        }
         tight_loop_contents(); // Modify with application code here.
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
