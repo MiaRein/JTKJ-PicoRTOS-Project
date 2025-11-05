@@ -18,14 +18,9 @@
 enum state { IDLE=1, RECORDING, READY_TO_SEND };
 enum state programState = IDLE;
 
-//nykyinen symboli
 char currentSymbol; 
-
-//Morse-viestin puskuri
 char morseMessage[256]; 
 size_t morseIndex = 0;
-
-//aikaperusteiseen kirjainten ja viestin hyväksyntään globaalit muuttujat
 absolute_time_t symbolStartTime; //kuinka kauan symbolin havainnosta
 bool symbolDetected = false; //onko symbooli havaittu
 bool letterFinalized = false; //onko kirjain valmis
@@ -36,13 +31,14 @@ static void uart_task(void *arg);
 static void morse_task(void *arg);
 void add_symbol_to_message(char symbol);
 void buttonFxn(uint gpio, uint32_t eventMask);
+void send_morse_message(const char* message);
 
 int main() {
     stdio_init_all();
     //Uncomment this lines if you want to wait till the serial monitor is connected
-    while (!stdio_usb_connected()){
+    /*while (!stdio_usb_connected()){
         sleep_ms(10);
-    }
+    }*/
 
     init_hat_sdk();
     sleep_ms(300); //Wait some time so initialization of USB and hat is done.
@@ -74,12 +70,7 @@ int main() {
 
     TaskHandle_t morseTaskHandle = NULL;
     // Create the tasks with xTaskCreate
-    BaseType_t morse = xTaskCreate(morse_task,       // (en) Task function
-                "morse",              // (en) Name of the task 
-                DEFAULT_STACK_SIZE, // (en) Size of the stack for this task (in words). Generally 1024 or 2048
-                NULL,               // (en) Arguments of the task 
-                2,                  // (en) Priority of this task
-                &morseTaskHandle);    // (en) A handle to control the execution of this task
+    BaseType_t morse = xTaskCreate(morse_task, "morse", DEFAULT_STACK_SIZE, NULL, 2, &morseTaskHandle);    
 
     if (morse != pdPASS) {
         printf("Morse Task creation failed\n");
@@ -125,9 +116,7 @@ void buttonFxn(uint gpio, uint32_t eventMask) {
 
             case READY_TO_SEND:
                 printf("Lähetetään viesti: %s\n", morseMessage);
-
-                //lähetetään UARTin kautta
-                //uart_task();
+                send_morse_message(morseMessage);
                 
                 // Vihreä LED ja summeri päälle merkiksi onnistuneesta lähetyksestä
                 gpio_put(RGB_LED_G, 1);
@@ -150,8 +139,6 @@ void buttonFxn(uint gpio, uint32_t eventMask) {
     }
 }
 
-
-// lukee IMU-dataa ja tunnistaa liikkeet/asennot
 static void morse_task(void *arg) {
     (void)arg;
     float ax, ay, az, gx, gy, gz, temp;
@@ -210,20 +197,25 @@ static void morse_task(void *arg) {
     }
 }
 
+//jos haluat lähettää kokon viestin kerralla, käytä tätä
+void send_morse_message(const char* message) {
+    if (message == NULL || message[0] == '\0') {
+        printf("Viestissä ei ole sisältöä");
+        return;
+    }
+ 
+    uart_puts(uart0, message);
+    uart_putc_raw(uart0, '\n'); //rivinvaihto loppuun
+}
+
 // lähettää tunnistetut symbolit UART:n kautta
 static void uart_task(void *arg) {
     (void)arg;
 
     for(;;) {
-        if (programState == READY_TO_SEND) {
-            printf("Viesti valmis lähetettäväksi\n");
-            printf("Lähetetään viesti: %s\n", morseMessage);
-            send_morse_message(morseMessage);
-            morseIndex = 0;
-            morseMessage[0] = '\0';
-            programState = IDLE;
-        }
         tight_loop_contents(); // Modify with application code here.
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
+
+
