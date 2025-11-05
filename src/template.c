@@ -40,7 +40,19 @@ void add_symbol_to_message(char symbol) {
 
 void buttonFxn(uint gpio, uint32_t eventMask) {
     if (gpio == BUTTON1) {
-        printf("Lähetetään viesti: %s\n", morseMessage);
+        printf("Lähetetään viesti: %s\n", morseMessage)
+        
+        // Vihreä LED ja summeri päälle merkiksi onnistuneesta lähetyksestä
+        gpio_put(RGB_LED_G, 1);
+
+        gpio_put(BUZZER_PIN, 1);
+        sleep_ms(300); //summeri soi 300ms
+        gpio_put(BUZZER_PIN, 0);
+
+        sleep_ms(200); // Näytä LED hetken
+        gpio_put(RGB_LED_G, 0);
+
+        // viesti nollataan
         morseIndex = 0;
         morseMessage[0] = '\0';
         letterFinalized = false;
@@ -90,6 +102,11 @@ static void morse_task(void *arg) {
                 if (absolute_time_diff_us(lastSymbolTime, get_absolute_time()) > 1500000 && !letterFinalized && morseIndex > 0) {
                     printf("Kirjain valmis\n");
                     letterFinalized = true;
+
+                    // Sininen LED merkiksi valmiista kirjaimesta
+                    gpio_put(RGB_LED_B, 1);
+                    sleep_ms(500); 
+                    gpio_put(RGB_LED_B, 0);
                 }
             }
         }
@@ -136,10 +153,10 @@ static void imu_test_task(void *arg) {
 
 int main() {
     stdio_init_all();
-    // Uncomment this lines if you want to wait till the serial monitor is connected
-    /*while (!stdio_usb_connected()){
+    //Uncomment this lines if you want to wait till the serial monitor is connected
+    while (!stdio_usb_connected()){
         sleep_ms(10);
-    }*/ 
+    }
 
     init_hat_sdk();
     sleep_ms(300); //Wait some time so initialization of USB and hat is done.
@@ -158,14 +175,16 @@ int main() {
     gpio_init(RGB_LED_G);
     gpio_set_dir(RGB_LED_G, GPIO_OUT);
 
-    gpio_init(RGB_LED_R);
-    gpio_set_dir(RGB_LED_R, GPIO_OUT);
-
     //painikkeiden alustaminen
     gpio_init(BUTTON1);
     gpio_set_dir(BUTTON1, GPIO_IN);
 
     gpio_set_irq_enabled_with_callback(BUTTON1, GPIO_IRQ_EDGE_FALL, true, &buttonFxn);
+
+    //äänimerkin alustus
+    gpio_init(BUZZER_PIN);
+    gpio_set_dir(BUZZER_PIN, GPIO_OUT);
+    gpio_put(BUZZER_PIN, 0); //aluksi pois päältä
 
     //asennon testauksiin
     //xTaskCreate(imu_test_task, "IMU Test", DEFAULT_STACK_SIZE, NULL, 1, NULL);
