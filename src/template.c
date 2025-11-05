@@ -26,8 +26,11 @@ char morseMessage[256];
 size_t morseIndex   = 0;
 
 //aikaperusteiseen kirjainten ja viestin hyväksyntään globaalit muuttujat
-bool letterFinalized;
-absolute_time_t lastSymbolTime; //edellisen symbolin havainnosta
+absolute_time_t symbolStartTime; //kuinka kauan symbolin havainnosta
+bool symbolDetected = false; //onko symbooli havaittu
+bool letterFinalized = false; //onko kirjain valmis
+bool readyForNextSymbol = true; // mahdollistaa useamman saman symbolin lukemisen liikuttamatta laitetta
+absolute_time_t lastSymbolAcceptedTime; //edellisen symbolin havainnosta
 
 //lisätään IMU-sensorilla saatu merkki viestiin, tarkistetaan että puskuriin mahtuu
 void add_symbol_to_message(char symbol) {
@@ -40,22 +43,42 @@ void add_symbol_to_message(char symbol) {
 
 void buttonFxn(uint gpio, uint32_t eventMask) {
     if (gpio == BUTTON1) {
-        printf("Lähetetään viesti: %s\n", morseMessage)
+        switch (programState) {
+            case IDLE:
+                programState = RECORDING;
+                printf("Tila: RECORDING\n");
+                break;
+
+            case RECORDING:
+                programState = READY_TO_SEND;
+                printf("Tila: READY_TO_SEND\n");
+                break;
+
+            case READY_TO_SEND:
+                printf("Lähetetään viesti: %s\n", morseMessage);
+
+                //lähetetään UARTin kautta
+                //uart_task();
+                
+                // Vihreä LED ja summeri päälle merkiksi onnistuneesta lähetyksestä
+                gpio_put(RGB_LED_G, 1);
+
+                gpio_put(BUZZER_PIN, 1);
+                sleep_ms(300); //summeri soi 300ms
+                gpio_put(BUZZER_PIN, 0);
+
+                sleep_ms(200); // Näytä LED hetken
+                gpio_put(RGB_LED_G, 0);
+
+                // viesti nollataan
+                morseIndex = 0;
+                morseMessage[0] = '\0';
+                letterFinalized = false;
+                programState = IDLE;
+                printf("Tila: IDLE\n");
+                break;
+            }
         
-        // Vihreä LED ja summeri päälle merkiksi onnistuneesta lähetyksestä
-        gpio_put(RGB_LED_G, 1);
-
-        gpio_put(BUZZER_PIN, 1);
-        sleep_ms(300); //summeri soi 300ms
-        gpio_put(BUZZER_PIN, 0);
-
-        sleep_ms(200); // Näytä LED hetken
-        gpio_put(RGB_LED_G, 0);
-
-        // viesti nollataan
-        morseIndex = 0;
-        morseMessage[0] = '\0';
-        letterFinalized = false;
     }
 }
 
@@ -65,43 +88,48 @@ static void morse_task(void *arg) {
     (void)arg;
     float ax, ay, az, gx, gy, gz, temp;
 
-    absolute_time_t symbolStartTime; //kuinka kauan symbolin havainnosta
-    bool symbolDetected = false; //onko symbooli havaittu
-
     for(;;) {
         // lukee IMUN:n sensoridatan -> palauttaa 0 jos lukeminen onnistuu
         if (ICM42670_read_sensor_data(&ax, &ay, &az, &gx, &gy, &gz, &temp) == 0) {
             if(programState == RECORDING)   {
-               if (!symbolDetected) {
+               if (readyForNextSymbol) {
                     if (fabs(az) > 0.8 && fabs(ax) < 0.3 && fabs(ay) < 0.3) {
                         //laite vaakatasossa
                         currentSymbol = '.';
                         symbolStartTime = get_absolute_time();
                         symbolDetected = true;
+                        readyForNextSymbol = false;
                     } else if (fabs(ax) > 0.8 && fabs(az) < 0.3 && fabs(ay) < 0.3) {
                         //laite pystyasennossa
                         currentSymbol = '-';
                         symbolStartTime = get_absolute_time();
                         symbolDetected = true;
+                        readyForNextSymbol = false;
                     } else if ((fabs(ay) > 0.8 || fabs(ay) < -0.8) && fabs(ax) < 0.3 && fabs(az) < 0.3) {
                         //kallistuu ylöspäin
                         currentSymbol = ' ';
                         symbolStartTime = get_absolute_time();
                         symbolDetected = true;
+                        readyForNextSymbol = false;
                     }
-                } else {  
+                } else if (symbolDetected) {  
                     //symboli hyväksytään, jos asento pysyy 500ms
                     if (absolute_time_diff_us(symbolStartTime, get_absolute_time()) > 500000) {
                         add_symbol_to_message(currentSymbol);
                         printf("Hyväksytty symboli: %c\n", currentSymbol);
                         symbolDetected = false;
-                        lastSymbolTime = get_absolute_time();
+                        lastSymbolAcceptedTime = get_absolute_time();
                         letterFinalized = false;
                     }                    
+                } else {
+                    if (absolute_time_diff_us(lastSymbolAcceptedTime, get_absolute_time()) > 700000) {
+                        readyForNextSymbol = true;
+                    }
                 }
-                if (absolute_time_diff_us(lastSymbolTime, get_absolute_time()) > 1500000 && !letterFinalized && morseIndex > 0) {
+                if (absolute_time_diff_us(lastSymbolAcceptedTime, get_absolute_time()) > 1500000 && !letterFinalized && morseIndex > 0) {
                     printf("Kirjain valmis\n");
                     letterFinalized = true;
+
 
                     // Sininen LED merkiksi valmiista kirjaimesta
                     gpio_put(RGB_LED_B, 1);
@@ -123,33 +151,6 @@ static void uart_task(void *arg) {
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
-
-//testataakseen asentoja
-/*
-static void imu_test_task(void *arg) {
-    (void)arg;
-    float ax, ay, az, gx, gy, gz, temp;
-
-    for (;;) {
-        if (ICM42670_read_sensor_data(&ax, &ay, &az, &gx, &gy, &gz, &temp) == 0) {
-            printf("ax: %.2f, ay: %.2f, az: %.2f\n", ax, ay, az);
-
-            if (fabs(az) > 0.85 && fabs(ax) < 0.3 && fabs(ay) < 0.3) {
-                printf("Asento: Vaakatasossa (piste)\n");
-            } else if (fabs(ax) > 0.85 && fabs(ay) < 0.3 && fabs(az) < 0.3) {
-                printf("Asento: Pystyasennossa (viiva)\n");
-            } else if (fabs(ay) > 0.85 && fabs(ax) < 0.3 && fabs(az) < 0.3) {
-                printf("Asento: Kallistettu eteenpäin (välilyönti)\n");
-            } else if (fabs(ay) < -0.85 && fabs(ax) < 0.3 && fabs(az) < 0.3) {
-                printf("Asento: Kallistettu taaksepäin (välilyönti)\n");
-            } else {
-                printf("Asento: Ei tunnistettu\n");
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
-*/
 
 int main() {
     stdio_init_all();
@@ -186,9 +187,6 @@ int main() {
     gpio_set_dir(BUZZER_PIN, GPIO_OUT);
     gpio_put(BUZZER_PIN, 0); //aluksi pois päältä
 
-    //asennon testauksiin
-    //xTaskCreate(imu_test_task, "IMU Test", DEFAULT_STACK_SIZE, NULL, 1, NULL);
-
     TaskHandle_t morseTaskHandle = NULL;
     // Create the tasks with xTaskCreate
     BaseType_t morse = xTaskCreate(morse_task,       // (en) Task function
@@ -198,16 +196,19 @@ int main() {
                 2,                  // (en) Priority of this task
                 &morseTaskHandle);    // (en) A handle to control the execution of this task
 
+    if (morse != pdPASS) {
+        printf("Morse Task creation failed\n");
+        return 0;
+    }
+    
     TaskHandle_t uartTaskHandle = NULL;
     BaseType_t uart = xTaskCreate(uart_task, "uart", DEFAULT_STACK_SIZE, NULL, 2, &uartTaskHandle);
 
-    /* TÄMÄ KOMMENTEISSA KUN pdPASS herjaa ettei ole alustettu?
-    if(result != pdPASS) {
-        printf("Morse Task creation failed\n");
+    if (uart != pdPASS) {
+        printf("Uart Task creation failed\n");
         return 0;
-    }*/
+    }
     
-
     // Start the scheduler (never returns)
     vTaskStartScheduler();
 
