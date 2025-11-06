@@ -83,7 +83,7 @@ static void init_task(void *arg) {
     gpio_put(BUZZER_PIN, 0);
 
     // Näyttö
-    init_display();
+    // init_display();
 
     // Luodaan morse_task (viestien muodostamiseen)
     TaskHandle_t morseTaskHandle = NULL;
@@ -215,21 +215,21 @@ static void status_task(void *arg) {
     for (;;) {
         switch (programState) {
             case IDLE:
-                gpio_put(RGB_LED_R, 1);
+                gpio_put(RGB_LED_R, 1); //merkkinä punainen valo
                 vTaskDelay(blinkSlow);
                 gpio_put(RGB_LED_R, 0);
                 vTaskDelay(blinkSlow);
                 break;
 
             case RECORDING:
-                gpio_put(RGB_LED_B, 1);
+                gpio_put(RGB_LED_B, 1); //merkkinä sininen valo
                 vTaskDelay(blinkFast);
                 gpio_put(RGB_LED_B, 0);
                 vTaskDelay(blinkFast);
                 break;
 
             case READY_TO_SEND:
-                gpio_put(RGB_LED_G, 1);
+                gpio_put(RGB_LED_G, 1); // merkkinä vihreä valo
                 vTaskDelay(pdMS_TO_TICKS(1000));
                 gpio_put(RGB_LED_G, 0);
                 vTaskDelay(pdMS_TO_TICKS(1000));
@@ -237,7 +237,6 @@ static void status_task(void *arg) {
         }
     }
 }
-
 
 //Viestin lähetys kerralla
 void send_morse_message(const char* message) {
@@ -269,7 +268,8 @@ void change_state(enum state newState) {
 
 //näyttö ei ole pakollinen Taso 1:ssä
 void display_message(const char* message) {
-    clear_display(); //tyhjentää näytön ennen uutta viestiä
-    set_text_cursor(0, 0); //asettaa tekstin aloituskohdan vasempaan yläkulmaan
-    write_text(message); //kirjoittaa viestin näytölle
+    // clear_display(); //tyhjentää näytön ennen uutta viestiä
+    // set_text_cursor(0, 0); //asettaa tekstin aloituskohdan vasempaan yläkulmaan
+    // write_text(message); //kirjoittaa viestin näytölle
+    printf("%s\n", message); // tulostaa sarjaporttiin, koska set_text_cursor ei toimi
 }
