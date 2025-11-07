@@ -39,9 +39,13 @@ int main() {
     stdio_init_all();
 
     //Uncomment this lines if you want to wait till the serial monitor is connected
-    /*while (!stdio_usb_connected()){
+    while (!stdio_usb_connected()){
         sleep_ms(10);
-    }*/
+    }
+    //debug miten nappi toimii
+    gpio_init(BUTTON1);
+    gpio_set_dir(BUTTON1, GPIO_IN);
+    printf("Button level now: %d\n", gpio_get(BUTTON1));
 
     TaskHandle_t initTaskHandle = NULL;
     xTaskCreate(init_task, "init_task", DEFAULT_STACK_SIZE, NULL, 3, &initTaskHandle);
@@ -62,7 +66,6 @@ static void init_task(void *arg) {
     sleep_ms(200);
 
     if (init_ICM42670() != 0) {
-        gpio_put(RGB_LED_R, 1);
         //printf("IMU init failed\n");
         send_debug_message("IMU init failed");
     } else {
@@ -79,7 +82,7 @@ static void init_task(void *arg) {
     // Painike
     gpio_init(BUTTON1);
     gpio_set_dir(BUTTON1, GPIO_IN);
-    gpio_set_irq_enabled_with_callback(BUTTON1, GPIO_IRQ_EDGE_FALL, true, &buttonFxn);
+    gpio_set_irq_enabled_with_callback(BUTTON1, GPIO_IRQ_EDGE_RISE, true, &buttonFxn);
 
     // Summeri
     gpio_init(BUZZER_PIN);
@@ -112,7 +115,12 @@ static void init_task(void *arg) {
 }
 
 void buttonFxn(uint gpio, uint32_t eventMask) {
-    if (gpio == BUTTON1) {
+    static uint32_t lastPressTime = 0; // estää aiheettomat tilasiirrot, kun napin painallus otetaan kerran
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+    
+    if (gpio == BUTTON1 && (now - lastPressTime) > 300) {
+        lastPressTime = now;
+
         switch (programState) {
             case IDLE:
                 change_state(RECORDING);
@@ -210,6 +218,11 @@ static void status_task(void *arg) {
     const TickType_t blinkFast = pdMS_TO_TICKS(200);
 
     for (;;) {
+        // varmistetaan että vain yhden tilan LED palaa
+        gpio_put(RGB_LED_R, 0);
+        gpio_put(RGB_LED_G, 0);
+        gpio_put(RGB_LED_B, 0);
+
         switch (programState) {
             case IDLE:
                 gpio_put(RGB_LED_R, 1); //merkkinä punainen valo vilkkuu hitaasti
@@ -226,10 +239,7 @@ static void status_task(void *arg) {
                 break;
 
             case READY_TO_SEND:
-                gpio_put(RGB_LED_G, 1); // merkkinä vihreä valo palaa jatkuvasti ja summeri soi hetken
-                gpio_put(BUZZER_PIN, 1);
-                vTaskDelay(pdMS_TO_TICKS(200));
-                gpio_put(BUZZER_PIN, 0);
+                gpio_put(RGB_LED_G, 1); // merkkinä vihreä valo palaa jatkuvasti
                 //gpio_put(RGB_LED_G, 0);
                 vTaskDelay(pdMS_TO_TICKS(800));
                 break;
@@ -262,6 +272,9 @@ void change_state(enum state newState) {
             break;
         case READY_TO_SEND:
             send_debug_message("State changed to READY_TO_SEND");
+            gpio_put(BUZZER_PIN, 1);
+            vTaskDelay(pdMS_TO_TICKS(200));
+            gpio_put(BUZZER_PIN, 0);
             break;
     }
 }
