@@ -32,7 +32,8 @@ void add_symbol_to_message(char symbol);
 void buttonFxn(uint gpio, uint32_t eventMask);
 void send_morse_message(const char* message);
 void change_state(enum state newState);
-void display_message(const char* message);
+//void display_message(const char* message);
+void send_debug_message(const char* debug);
     
 int main() {
     stdio_init_all();
@@ -58,13 +59,16 @@ static void init_task(void *arg) {
     // HATin ja I2C:n alustus
     init_hat_sdk();
     init_i2c_default();
-    sleep_ms(300);
+    sleep_ms(200);
 
     if (init_ICM42670() != 0) {
         gpio_put(RGB_LED_R, 1);
-        printf("IMU init failed\n");
+        //printf("IMU init failed\n");
+        send_debug_message("IMU init failed");
     } else {
         ICM42670_start_with_default_values();
+        send_debug_message("IMU initialized successfully");
+        //printf("IMU initialized succesfully");
     }
 
     // LEDien alustus
@@ -89,27 +93,22 @@ static void init_task(void *arg) {
     TaskHandle_t morseTaskHandle = NULL;
     BaseType_t morse = xTaskCreate(morse_task, "morse", DEFAULT_STACK_SIZE, NULL, 2, &morseTaskHandle);
     if (morse != pdPASS) {
-        printf("Morse Task creation failed\n");
+        //printf("Morse Task creation failed\n");
+        send_debug_message("Morse task creation failed");
     }
 
     // Luodaan status_task (vilkuttaa LEDiä tai näyttää tilaa)
     TaskHandle_t statusTaskHandle = NULL;
     BaseType_t status = xTaskCreate(status_task, "status", DEFAULT_STACK_SIZE, NULL, 1, &statusTaskHandle);
     if (status != pdPASS) {
-        printf("Status Task creation failed\n");
-}
+        //printf("Status Task creation failed\n");
+        send_debug_message("Status task creation failed");
+    }
 
     // Init task voi lopettaa itsensä, koska sen tehtävä on ohi
+    send_debug_message("Init task completed");
+    //printf("INIT task completed");
     vTaskDelete(NULL);
-}
-
-
-//lisätään IMU-sensorilla saatu merkki viestiin, tarkistetaan että puskuriin mahtuu
-void add_symbol_to_message(char symbol) {
-    if (morseIndex < sizeof(morseMessage) -1) {
-        morseMessage[morseIndex++] = symbol;
-        morseMessage[morseIndex] = '\0';
-    }
 }
 
 void buttonFxn(uint gpio, uint32_t eventMask) {
@@ -117,29 +116,27 @@ void buttonFxn(uint gpio, uint32_t eventMask) {
         switch (programState) {
             case IDLE:
                 change_state(RECORDING);
+                send_debug_message("Button pressed -> RECORDING");
+                //printf("RECORDING");
                 break;
 
             case RECORDING:
                 change_state(READY_TO_SEND);
+                send_debug_message("Button pressed -> READY_TO_SEND");
+                //printf("READY TO SEND")
                 break;
 
             case READY_TO_SEND:
+                send_debug_message("Sending message");
                 printf("Lähetetään viesti: %s\n", morseMessage);
                 send_morse_message(morseMessage);
-                
-                // Vihreä LED ja summeri päälle merkiksi onnistuneesta lähetyksestä
-                gpio_put(RGB_LED_G, 1);
-                gpio_put(BUZZER_PIN, 1);
-                vTaskDelay(pdMS_TO_TICKS(300)); //summeri soi 300ms
-                gpio_put(BUZZER_PIN, 0);
-                vTaskDelay(pdMS_TO_TICKS(200));// Näytä LED hetken
-                gpio_put(RGB_LED_G, 0);
 
                 // viesti nollataan
                 morseIndex = 0;
                 morseMessage[0] = '\0';
                 letterFinalized = false;
                 change_state(IDLE);
+                send_debug_message("Message sent and buffer cleared");
                 break;
         }
     }
@@ -163,24 +160,28 @@ static void morse_task(void *arg) {
                         symbolStartTick = now;
                         symbolDetected = true;
                         readyForNextSymbol = false;
+                        send_debug_message("Detected potential DOT");
                     } else if (fabs(ax) > 0.8 && fabs(az) < 0.3 && fabs(ay) < 0.3) {
                         //laite pystyasennossa = viiva
                         currentSymbol = '-';
                         symbolStartTick = now;
                         symbolDetected = true;
                         readyForNextSymbol = false;
+                        send_debug_message("Detected potential DASH");
                     } else if (fabs(ay) > 0.8 && fabs(ax) < 0.3 && fabs(az) < 0.3) {
                         //kallistuu ylöspäin = välilyönti
                         currentSymbol = ' ';
                         symbolStartTick = now;
                         symbolDetected = true;
                         readyForNextSymbol = false;
+                        send_debug_message("Detected SPACE");
                     }
                 } else if (symbolDetected) {  
                     //symboli hyväksytään, jos asento pysyy 500ms
                     if ((now - symbolStartTick) > pdMS_TO_TICKS(500)) {
                         add_symbol_to_message(currentSymbol);
-                        printf("Hyväksytty symboli: %c\n", currentSymbol);
+                        //printf("Hyväksytty symboli: %c\n", currentSymbol);
+                        send_debug_message("Symbol confirmed");
                         symbolDetected = false;
                         lastSymbolAcceptedTick = now;
                         letterFinalized = false;
@@ -192,13 +193,9 @@ static void morse_task(void *arg) {
                 }
                 if ((now - lastSymbolAcceptedTick) > pdMS_TO_TICKS(1500) && 
                     !letterFinalized && morseIndex > 0) {
-                    printf("Kirjain valmis\n");
+                    //printf("Kirjain valmis\n");
+                    send_debug_message("Letter finalized");
                     letterFinalized = true;
-
-                    // Sininen LED merkiksi valmiista kirjaimesta
-                    gpio_put(RGB_LED_B, 1);
-                    vTaskDelay(pdMS_TO_TICKS(500));
-                    gpio_put(RGB_LED_B, 0);
                 }
             }
         }
@@ -215,24 +212,26 @@ static void status_task(void *arg) {
     for (;;) {
         switch (programState) {
             case IDLE:
-                gpio_put(RGB_LED_R, 1); //merkkinä punainen valo
+                gpio_put(RGB_LED_R, 1); //merkkinä punainen valo vilkkuu hitaasti
                 vTaskDelay(blinkSlow);
                 gpio_put(RGB_LED_R, 0);
                 vTaskDelay(blinkSlow);
                 break;
 
             case RECORDING:
-                gpio_put(RGB_LED_B, 1); //merkkinä sininen valo
+                gpio_put(RGB_LED_B, 1); //merkkinä sininen valo vilkkuu nopeammin
                 vTaskDelay(blinkFast);
                 gpio_put(RGB_LED_B, 0);
                 vTaskDelay(blinkFast);
                 break;
 
             case READY_TO_SEND:
-                gpio_put(RGB_LED_G, 1); // merkkinä vihreä valo
-                vTaskDelay(pdMS_TO_TICKS(1000));
-                gpio_put(RGB_LED_G, 0);
-                vTaskDelay(pdMS_TO_TICKS(1000));
+                gpio_put(RGB_LED_G, 1); // merkkinä vihreä valo palaa jatkuvasti ja summeri soi hetken
+                gpio_put(BUZZER_PIN, 1);
+                vTaskDelay(pdMS_TO_TICKS(200));
+                gpio_put(BUZZER_PIN, 0);
+                //gpio_put(RGB_LED_G, 0);
+                vTaskDelay(pdMS_TO_TICKS(800));
                 break;
         }
     }
@@ -241,11 +240,12 @@ static void status_task(void *arg) {
 //Viestin lähetys kerralla
 void send_morse_message(const char* message) {
     if (message == NULL || message[0] == '\0') {
-        printf("Viestissä ei ole sisältöä");
+        //printf("Viestissä ei ole sisältöä");
+        send_debug_message("Empty message - not sent");
         return;
     }
-    //näyttö ei ole pakollinen taso 1ssä, poista jos haluat
-    display_message(message);
+    //näyttö ei ole pakollinen taso 1:ssä
+    //display_message(message);
     
     uart_puts(uart0, message);
     uart_puts(uart0, "  \n"); // kaksi välilyöntiä ja rivinvaihto loppuun
@@ -255,21 +255,37 @@ void change_state(enum state newState) {
     programState = newState;
     switch (newState) {
         case IDLE:
-            display_message("Tila: IDLE");
+            send_debug_message("State changed to IDLE");
             break;
         case RECORDING:
-            display_message("Tila: RECORDING");
+            send_debug_message("State changed to RECORDING");
             break;
         case READY_TO_SEND:
-            display_message("Tila: READY_TO_SEND");
+            send_debug_message("State changed to READY_TO_SEND");
             break;
     }
 }
 
+//lisätään IMU-sensorilla saatu merkki viestiin, tarkistetaan että puskuriin mahtuu
+void add_symbol_to_message(char symbol) {
+    if (morseIndex < sizeof(morseMessage) -1) {
+        morseMessage[morseIndex++] = symbol;
+        morseMessage[morseIndex] = '\0';
+    }
+}
+
 //näyttö ei ole pakollinen Taso 1:ssä
+/*
 void display_message(const char* message) {
     // clear_display(); //tyhjentää näytön ennen uutta viestiä
     // set_text_cursor(0, 0); //asettaa tekstin aloituskohdan vasempaan yläkulmaan
     // write_text(message); //kirjoittaa viestin näytölle
     printf("%s\n", message); // tulostaa sarjaporttiin, koska set_text_cursor ei toimi
+}*/
+
+void send_debug_message(const char* debug) {
+    uart_puts(uart0, "__");
+    uart_puts(uart0, debug);
+    uart_puts(uart0, "__\n");
+    printf("DEBUG: %s\n", debug);
 }
