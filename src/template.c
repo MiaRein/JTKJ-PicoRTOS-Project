@@ -42,13 +42,13 @@ int main() {
     while (!stdio_usb_connected()){
         sleep_ms(10);
     }
-    //debug miten nappi toimii, ei ole tässä vaiheessa vielä edes alustettu?
-    //gpio_init(BUTTON1);
-    //gpio_set_dir(BUTTON1, GPIO_IN);
-    //printf("Button level now: %d\n", gpio_get(BUTTON1));
 
     TaskHandle_t initTaskHandle = NULL;
     xTaskCreate(init_task, "init_task", DEFAULT_STACK_SIZE, NULL, 3, &initTaskHandle);
+
+    if (init_task != pdPASS) {
+        send_debug_message("Init task creation failed");
+    }
     
     // Start the scheduler (never returns)
     vTaskStartScheduler();
@@ -74,6 +74,11 @@ static void init_task(void *arg) {
         //printf("IMU initialized succesfully");
     }
 
+    // UART0 alustus
+    uart_init(uart0, 9600);
+    gpio_set_function(0, GPIO_FUNC_UART);
+    gpio_set_function(1, GPIO_FUNC_UART);
+
     // LEDien alustus
     gpio_init(RGB_LED_B); gpio_set_dir(RGB_LED_B, GPIO_OUT);
     gpio_init(RGB_LED_G); gpio_set_dir(RGB_LED_G, GPIO_OUT);
@@ -85,9 +90,9 @@ static void init_task(void *arg) {
     gpio_set_irq_enabled_with_callback(BUTTON1, GPIO_IRQ_EDGE_RISE, true, &buttonFxn);
 
     // Summeri
-    gpio_init(BUZZER_PIN);
-    gpio_set_dir(BUZZER_PIN, GPIO_OUT);
-    gpio_put(BUZZER_PIN, 0);
+    //gpio_init(BUZZER_PIN);
+    //gpio_set_dir(BUZZER_PIN, GPIO_OUT);
+    //gpio_put(BUZZER_PIN, 0);
 
     // Näyttö
     // init_display();
@@ -207,7 +212,8 @@ static void morse_task(void *arg) {
                 }
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
+        //vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
 
@@ -272,9 +278,9 @@ void change_state(enum state newState) {
             break;
         case READY_TO_SEND:
             send_debug_message("State changed to READY_TO_SEND");
-            gpio_put(BUZZER_PIN, 1);
-            vTaskDelay(pdMS_TO_TICKS(200));
-            gpio_put(BUZZER_PIN, 0);
+            //gpio_put(BUZZER_PIN, 1);
+            //vTaskDelay(pdMS_TO_TICKS(200));
+            //gpio_put(BUZZER_PIN, 0);
             break;
     }
 }
@@ -287,8 +293,7 @@ void add_symbol_to_message(char symbol) {
     }
 }
 
-//näyttö ei ole pakollinen Taso 1:ssä
-/*
+/*näyttö ei ole pakollinen Taso 1:ssä
 void display_message(const char* message) {
     // clear_display(); //tyhjentää näytön ennen uutta viestiä
     // set_text_cursor(0, 0); //asettaa tekstin aloituskohdan vasempaan yläkulmaan
