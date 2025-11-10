@@ -42,10 +42,10 @@ int main() {
     while (!stdio_usb_connected()){
         sleep_ms(10);
     }
-    //debug miten nappi toimii
-    gpio_init(BUTTON1);
-    gpio_set_dir(BUTTON1, GPIO_IN);
-    printf("Button level now: %d\n", gpio_get(BUTTON1));
+    //debug miten nappi toimii, ei ole tässä vaiheessa vielä edes alustettu?
+    //gpio_init(BUTTON1);
+    //gpio_set_dir(BUTTON1, GPIO_IN);
+    //printf("Button level now: %d\n", gpio_get(BUTTON1));
 
     TaskHandle_t initTaskHandle = NULL;
     xTaskCreate(init_task, "init_task", DEFAULT_STACK_SIZE, NULL, 3, &initTaskHandle);
@@ -108,14 +108,14 @@ static void init_task(void *arg) {
         send_debug_message("Status task creation failed");
     }
 
-    // Init task voi lopettaa itsensä, koska sen tehtävä on ohi
+    // Init task voi lopettaa itsensä, koska sen tehtävä on ohi (lähde copilot)
     send_debug_message("Init task completed");
     //printf("INIT task completed");
     vTaskDelete(NULL);
 }
 
 void buttonFxn(uint gpio, uint32_t eventMask) {
-    static uint32_t lastPressTime = 0; // estää aiheettomat tilasiirrot, kun napin painallus otetaan kerran
+    static uint32_t lastPressTime = 0; // estää aiheettomat tilasiirrot, kun napin painallus otetaan kerran, lähde copilot, yritetty etsiä syytä miksi ei toimi
     uint32_t now = to_ms_since_boot(get_absolute_time());
     
     if (gpio == BUTTON1 && (now - lastPressTime) > 300) {
