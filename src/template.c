@@ -13,7 +13,7 @@
 #define DEFAULT_STACK_SIZE 2048 
 
 //Tilakone
-enum state { IDLE=1, RECORDING, READY_TO_SEND };
+enum state { IDLE=1, RECORDING, SEND };
 enum state programState = IDLE;
 
 //morseviestiin liittyvät globaalit muuttujat
@@ -35,13 +35,14 @@ void send_debug_message(const char* debug);
     
 int main() {
     stdio_init_all();
+    
+    // Odotetaan sarjaliikenneyhteyttä (tämä voidaan myös poistaa jos ei tarvita)
+    while (!stdio_usb_connected()) {
+        sleep_ms(10);
+    }
+
     init_hat_sdk();    
     sleep_ms(300);
-
-    // Odotetaan sarjaliikenneyhteyttä (tämä voidaan myös poistaa jos ei tarvita)
-    /*while (!stdio_usb_connected()) {
-        sleep_ms(10);
-    }*/
 
     // Alustetaan LEDit, buzzer ja napit SDK:n kautta
     init_led();
@@ -50,6 +51,12 @@ int main() {
     init_button2();
 
     gpio_set_irq_enabled_with_callback(BUTTON1, GPIO_IRQ_EDGE_RISE, true, &buttonFxn);
+
+    // UART0 alustus
+    uart_init(uart0, 9600);
+    gpio_set_function(0, GPIO_FUNC_UART);
+    gpio_set_function(1, GPIO_FUNC_UART);
+    uart_initialized = true;
 
     // Luodaan morse- ja status-taskit
     TaskHandle_t morseTaskHandle = NULL;
@@ -70,12 +77,6 @@ int main() {
     // Käynnistetään RTOS (ei palaa)
     vTaskStartScheduler();
 
-    //Jos tänne päädytään, RTOS ei käynnistynyt
-    while (1) {
-        send_debug_message("Scheduler failed to start");
-        sleep_ms(1000);
-    }
-
     return 0;
 }
 
@@ -86,10 +87,10 @@ void buttonFxn(uint gpio, uint32_t eventMask) {
             break;
 
         case RECORDING:
-            change_state(READY_TO_SEND);
+            change_state(SEND);
             break;
 
-        case READY_TO_SEND:
+        case SEND:
             send_morse_message(morseMessage);
 
             // viesti nollataan
@@ -104,20 +105,14 @@ void buttonFxn(uint gpio, uint32_t eventMask) {
 static void morse_task(void *arg) {
     (void)arg;
 
-    sleep_ms(200); // pieni viive ennen IMU:n aloitusta
-
-    if (init_ICM42670() != 0) {
-        send_debug_message("IMU init failed");
-    } else {
-        ICM42670_start_with_default_values();
+    if (init_ICM42670() == 0) {
         send_debug_message("IMU initialized successfully");
+        if (ICM42670_start_with_default_values() != 0) {
+            send_debug_message("ICM-42670P could not initialize accelerometer or gyroscope");
+        }
+    } else {
+        send_debug_message("IMU init failed");
     }
-
-    // UART0 alustus
-    uart_init(uart0, 9600);
-    gpio_set_function(0, GPIO_FUNC_UART);
-    gpio_set_function(1, GPIO_FUNC_UART);
-    uart_initialized = true;
 
     send_debug_message("Morse task initialized");
 
@@ -179,8 +174,10 @@ static void morse_task(void *arg) {
                     letterFinalized = true;
                 }
             }
+        } else {
+            send_debug_message("Failed to read IMU data");
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
 
@@ -197,7 +194,7 @@ static void status_task(void *arg) {
         switch (programState) {
             case IDLE:
                 init_rgb_led();
-                rgb_led_write(0, 255, 255);   // punainen päälle
+                rgb_led_write(0, 255, 255);   // punainen päälle (0 = ON)
                 vTaskDelay(blinkSlow);
                 rgb_led_write(255, 255, 255); // kaikki pois päältä
                 vTaskDelay(blinkSlow);
@@ -211,7 +208,7 @@ static void status_task(void *arg) {
                 vTaskDelay(blinkFast);
                 break;
 
-            case READY_TO_SEND:
+            case SEND:
                 init_rgb_led();
                 rgb_led_write(255, 0, 255);   // vihreä jatkuvasti
                 vTaskDelay(pdMS_TO_TICKS(800));
@@ -242,8 +239,8 @@ void change_state(enum state newState) {
         case RECORDING:
             send_debug_message("State changed to RECORDING");
             break;
-        case READY_TO_SEND:
-            send_debug_message("State changed to READY_TO_SEND");
+        case SEND:
+            send_debug_message("State changed to SEND");
             break;
     }
 }
