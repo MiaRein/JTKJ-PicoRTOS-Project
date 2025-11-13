@@ -98,12 +98,12 @@ static void morse_task(void *arg) {
     (void)arg;
 
     if (init_ICM42670() == 0) {
-        //send_debug_message("IMU initialized successfully");
+        send_debug_message("IMU initialized successfully");
         if (ICM42670_start_with_default_values() != 0) {
-            //send_debug_message("ICM-42670P could not initialize accelerometer or gyroscope");
+            send_debug_message("ICM-42670P could not initialize accelerometer or gyroscope");
         }
     } else {
-        //send_debug_message("IMU init failed");
+        send_debug_message("IMU init failed");
     }
     
     send_debug_message("Morse task initialized");
@@ -142,13 +142,12 @@ static void morse_task(void *arg) {
                         symbolStartTick = now;
                         symbolDetected = true;
                         readyForNextSymbol = false;
-                        send_debug_message("Detected SPACE");
+                        send_debug_message("Detected potential SPACE");
                     }
                 } else if (symbolDetected) {  
                     //symboli hyväksytään, jos asento pysyy 500ms
                     if ((now - symbolStartTick) > pdMS_TO_TICKS(500)) {
                         add_symbol_to_message(currentSymbol);
-                        //printf("Hyväksytty symboli: %c\n", currentSymbol);
                         send_debug_message("Symbol confirmed");
                         symbolDetected = false;
                         lastSymbolAcceptedTick = now;
@@ -161,7 +160,6 @@ static void morse_task(void *arg) {
                 }
                 if ((now - lastSymbolAcceptedTick) > pdMS_TO_TICKS(1500) && 
                     !letterFinalized && morseIndex > 0) {
-                    //printf("Kirjain valmis\n");
                     send_debug_message("Letter finalized");
                     letterFinalized = true;
                 }
@@ -179,31 +177,18 @@ static void status_task(void *arg) {
 
     send_debug_message("Status task initialized");
 
-    //const TickType_t blinkSlow = pdMS_TO_TICKS(500);
-    //const TickType_t blinkFast = pdMS_TO_TICKS(200);
-
     for (;;) {
         switch (programState) {
             case IDLE:
-                //init_rgb_led();
-                rgb_led_write(0, 255, 255);   // punainen päälle (0 = ON)
-                //vTaskDelay(blinkSlow);
-                //rgb_led_write(255, 255, 255); // kaikki pois päältä
-                //vTaskDelay(blinkSlow);
+                rgb_led_write(0, 255, 255);   // punainen päälle
                 break;
 
             case RECORDING:
-                //init_rgb_led();
                 rgb_led_write(255, 255, 0);   // sininen päälle
-                //vTaskDelay(blinkFast);
-                //rgb_led_write(255, 255, 255); // pois
-                //vTaskDelay(blinkFast);
                 break;
 
             case SEND:
-                //init_rgb_led();
-                rgb_led_write(255, 0, 255);   // vihreä jatkuvasti
-                //vTaskDelay(pdMS_TO_TICKS(800));
+                rgb_led_write(255, 0, 255);   // vihreä
                 break;
         }
         vTaskDelay(pdMS_TO_TICKS(500));
@@ -219,7 +204,6 @@ void send_morse_message(const char* message) {
     }
 
     printf("Morse message: %s  \n", message); // kaksi välilyöntiä ja rivinvaihto loppuun
-    //fflush(stdout);
     
     buzzer_play_tone(1000, 200);  // Piippaa 200 ms
     send_debug_message("Message sent");
@@ -229,13 +213,13 @@ void change_state(enum state newState) {
     programState = newState;
     switch (newState) {
         case IDLE:
-            //send_debug_message("State changed to IDLE");
+            send_debug_message("State changed to IDLE");
             break;
         case RECORDING:
-            //send_debug_message("State changed to RECORDING");
+            send_debug_message("State changed to RECORDING");
             break;
         case SEND:
-            //send_debug_message("State changed to SEND");
+            send_debug_message("State changed to SEND");
             break;
     }
 }
