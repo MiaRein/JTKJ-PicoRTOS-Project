@@ -22,7 +22,7 @@ size_t morseIndex = 0;
 bool letterFinalized = false; //onko kirjain valmis
 
 //onko uart alustettu, tämän avulla yritetty parantaa sitä, että saisi picon toimimaan
-bool uart_initialized = false;
+//bool uart_initialized = false;
 
 //prototyypit
 static void morse_task(void *arg);
@@ -52,11 +52,13 @@ int main() {
 
     gpio_set_irq_enabled_with_callback(BUTTON1, GPIO_IRQ_EDGE_RISE, true, &buttonFxn);
 
-    // UART0 alustus
+    // UART0 alustus, tarvitaanko?
+    /*
     uart_init(uart0, 9600);
     gpio_set_function(0, GPIO_FUNC_UART);
     gpio_set_function(1, GPIO_FUNC_UART);
     uart_initialized = true;
+    */
 
     // Luodaan morse- ja status-taskit
     TaskHandle_t morseTaskHandle = NULL;
@@ -254,10 +256,10 @@ void add_symbol_to_message(char symbol) {
 }
 
 void send_debug_message(const char* debug) {
-    if (uart_initialized) {
+    /*if (uart_initialized) {
         uart_puts(uart0, "__");
         uart_puts(uart0, debug);
         uart_puts(uart0, "__\n");
-    }
-    printf("DEBUG: %s\n", debug);
+    }*/
+    printf("__%s__\n", debug);
 }
