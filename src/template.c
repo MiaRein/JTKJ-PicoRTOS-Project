@@ -226,10 +226,16 @@ void send_morse_message(const char* message) {
         send_debug_message("Empty message - not sent");
         return;
     }
-    
+    /* ei uartilla
     uart_puts(uart0, message);
     uart_puts(uart0, "  \n"); // kaksi välilyöntiä ja rivinvaihto loppuun
+    */
+
+    printf("Morse message: %s  \n", message); // kaksi välilyöntiä ja rivinvaihto loppuun
+    fflush(stdout);
+    
     buzzer_play_tone(1000, 200);  // Piippaa 200 ms
+    send_debug_message("Message sent");
 }
 
 void change_state(enum state newState) {
