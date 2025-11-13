@@ -1,3 +1,6 @@
+//Mia Rein & Mervi Alatalo
+//3p / opiskelija
+
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
