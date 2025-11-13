@@ -21,9 +21,6 @@ char morseMessage[256];
 size_t morseIndex = 0;
 bool letterFinalized = false; //onko kirjain valmis
 
-//onko uart alustettu, tämän avulla yritetty parantaa sitä, että saisi picon toimimaan
-//bool uart_initialized = false;
-
 //prototyypit
 static void morse_task(void *arg);
 static void status_task(void *arg);
@@ -36,7 +33,7 @@ void send_debug_message(const char* debug);
 int main() {
     stdio_init_all();
     
-    // Odotetaan sarjaliikenneyhteyttä (tämä voidaan myös poistaa jos ei tarvita)
+    // Odotetaan sarjaliikenneyhteyttä
     while (!stdio_usb_connected()) {
         sleep_ms(10);
     }
@@ -44,28 +41,21 @@ int main() {
     init_hat_sdk();    
     sleep_ms(300);
 
-    // Alustetaan LEDit, buzzer ja napit SDK:n kautta
+    // Alustetaan LEDit, buzzer ja napit 
     init_led();
+    init_rgb_led();
     init_buzzer();
     init_button1();
     init_button2();
 
     gpio_set_irq_enabled_with_callback(BUTTON1, GPIO_IRQ_EDGE_RISE, true, &buttonFxn);
 
-    // UART0 alustus, tarvitaanko?
-    /*
-    uart_init(uart0, 9600);
-    gpio_set_function(0, GPIO_FUNC_UART);
-    gpio_set_function(1, GPIO_FUNC_UART);
-    uart_initialized = true;
-    */
-
     // Luodaan morse- ja status-taskit
     TaskHandle_t morseTaskHandle = NULL;
     TaskHandle_t statusTaskHandle = NULL;
 
     BaseType_t morse = xTaskCreate(morse_task, "morse", DEFAULT_STACK_SIZE, NULL, 2, &morseTaskHandle);
-    BaseType_t status = xTaskCreate(status_task, "status", DEFAULT_STACK_SIZE, NULL, 1, &statusTaskHandle);
+    BaseType_t status = xTaskCreate(status_task, "status", DEFAULT_STACK_SIZE, NULL, 2, &statusTaskHandle);
 
     if (morse != pdPASS) {
         send_debug_message("Morse task creation failed");
@@ -74,9 +64,9 @@ int main() {
         send_debug_message("Status task creation failed");
     }
 
-    printf("Creating tasks now...\n");
-    printf("Starting scheduler...\n");
-    // Käynnistetään RTOS (ei palaa)
+    send_debug_message("Creating tasks now...");
+    send_debug_message("Starting scheduler...");
+    
     vTaskStartScheduler();
 
     return 0;
@@ -108,14 +98,14 @@ static void morse_task(void *arg) {
     (void)arg;
 
     if (init_ICM42670() == 0) {
-        send_debug_message("IMU initialized successfully");
+        //send_debug_message("IMU initialized successfully");
         if (ICM42670_start_with_default_values() != 0) {
-            send_debug_message("ICM-42670P could not initialize accelerometer or gyroscope");
+            //send_debug_message("ICM-42670P could not initialize accelerometer or gyroscope");
         }
     } else {
-        send_debug_message("IMU init failed");
+        //send_debug_message("IMU init failed");
     }
-
+    
     send_debug_message("Morse task initialized");
 
     float ax, ay, az, gx, gy, gz, temp;
@@ -189,33 +179,34 @@ static void status_task(void *arg) {
 
     send_debug_message("Status task initialized");
 
-    const TickType_t blinkSlow = pdMS_TO_TICKS(500);
-    const TickType_t blinkFast = pdMS_TO_TICKS(200);
+    //const TickType_t blinkSlow = pdMS_TO_TICKS(500);
+    //const TickType_t blinkFast = pdMS_TO_TICKS(200);
 
     for (;;) {
         switch (programState) {
             case IDLE:
-                init_rgb_led();
+                //init_rgb_led();
                 rgb_led_write(0, 255, 255);   // punainen päälle (0 = ON)
-                vTaskDelay(blinkSlow);
-                rgb_led_write(255, 255, 255); // kaikki pois päältä
-                vTaskDelay(blinkSlow);
+                //vTaskDelay(blinkSlow);
+                //rgb_led_write(255, 255, 255); // kaikki pois päältä
+                //vTaskDelay(blinkSlow);
                 break;
 
             case RECORDING:
-                init_rgb_led();
+                //init_rgb_led();
                 rgb_led_write(255, 255, 0);   // sininen päälle
-                vTaskDelay(blinkFast);
-                rgb_led_write(255, 255, 255); // pois
-                vTaskDelay(blinkFast);
+                //vTaskDelay(blinkFast);
+                //rgb_led_write(255, 255, 255); // pois
+                //vTaskDelay(blinkFast);
                 break;
 
             case SEND:
-                init_rgb_led();
+                //init_rgb_led();
                 rgb_led_write(255, 0, 255);   // vihreä jatkuvasti
-                vTaskDelay(pdMS_TO_TICKS(800));
+                //vTaskDelay(pdMS_TO_TICKS(800));
                 break;
         }
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }
 
@@ -226,13 +217,9 @@ void send_morse_message(const char* message) {
         send_debug_message("Empty message - not sent");
         return;
     }
-    /* ei uartilla
-    uart_puts(uart0, message);
-    uart_puts(uart0, "  \n"); // kaksi välilyöntiä ja rivinvaihto loppuun
-    */
 
     printf("Morse message: %s  \n", message); // kaksi välilyöntiä ja rivinvaihto loppuun
-    fflush(stdout);
+    //fflush(stdout);
     
     buzzer_play_tone(1000, 200);  // Piippaa 200 ms
     send_debug_message("Message sent");
@@ -242,13 +229,13 @@ void change_state(enum state newState) {
     programState = newState;
     switch (newState) {
         case IDLE:
-            send_debug_message("State changed to IDLE");
+            //send_debug_message("State changed to IDLE");
             break;
         case RECORDING:
-            send_debug_message("State changed to RECORDING");
+            //send_debug_message("State changed to RECORDING");
             break;
         case SEND:
-            send_debug_message("State changed to SEND");
+            //send_debug_message("State changed to SEND");
             break;
     }
 }
@@ -262,10 +249,5 @@ void add_symbol_to_message(char symbol) {
 }
 
 void send_debug_message(const char* debug) {
-    /*if (uart_initialized) {
-        uart_puts(uart0, "__");
-        uart_puts(uart0, debug);
-        uart_puts(uart0, "__\n");
-    }*/
     printf("__%s__\n", debug);
 }
