@@ -180,15 +180,15 @@ static void status_task(void *arg) {
     for (;;) {
         switch (programState) {
             case IDLE:
-                rgb_led_write(0, 255, 255);   // punainen päälle
+                rgb_led_write(0, 255, 255);   //sininen väri päällä kun odottaa
                 break;
 
             case RECORDING:
-                rgb_led_write(255, 255, 0);   // sininen päälle
+                rgb_led_write(255, 255, 0);   //vihreä väri päällä kun nauhoittaa
                 break;
 
             case SEND:
-                rgb_led_write(255, 0, 255);   // vihreä
+                rgb_led_write(255, 0, 255);   //punainen väri päällä kun lähettää
                 break;
         }
         vTaskDelay(pdMS_TO_TICKS(500));
